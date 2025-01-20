@@ -1,13 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Functional;
+
+use FunctionalTester;
 
 class Frontend_PublicCest extends CestAbstract
 {
     /**
      * @before setupComplete
      */
-    public function seePublicPage(\FunctionalTester $I): void
+    public function seePublicPage(FunctionalTester $I): void
     {
         $I->wantTo('Verify that the public page displays.');
 
@@ -18,7 +22,7 @@ class Frontend_PublicCest extends CestAbstract
         $this->em->flush();
 
         $I->amOnPage('/public/' . $testStation->getId());
-        $I->seeResponseCodeIs(500);
+        $I->seeResponseCodeIs(404);
 
         // Enable public pages
         $testStation = $this->getTestStation();

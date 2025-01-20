@@ -1,6 +1,8 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
 
-gosu azuracast php /var/azuracast/www/bin/uptime_wait || exit 1
+if [ `whoami` != 'azuracast' ]; then
+    exec gosu azuracast uptime_wait "$@"
+fi
 
-exec "$@"
+cd /var/azuracast/www
+exec php backend/bin/uptime_wait "$@"

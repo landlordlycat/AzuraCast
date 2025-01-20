@@ -5,15 +5,820 @@ release channel, you can take advantage of these new features and fixes.
 
 ## New Features/Changes
 
+- **Support for Rocket Streaming Audio Server (RSAS)**: RSAS is a popular, closed-source drop-in replacement for
+  Icecast, and AzuraCast now supports uploading the RSAS binary and license key, and selecting RSAS as a broadcasting
+  frontend, directly within the web UI.
+
+- **Update to Liquidsoap 2.3.0**: We have worked closely with the maintainers of Liquidsoap and members of the radio
+  community to test and refine the next big version of Liquidsoap, our underlying broadcast manager, and they have
+  released 2.3.0 as a stable release. We're planning on using this version moving forward, first in Rolling Release for
+  testing and then in Stable builds. Some custom code may require modification from previous versions, but a majority of
+  code should work unmodified.
+
+- **Bluesky Post Webhook**: You can now add a web hook that, when dispatched, creates a new post on Bluesky.
+
+- You can now navigate from week to week on the "Schedule" tab of Playlist/Streamer admin pages, as well as switch to "
+  Day" view.
+
 ## Code Quality/Technical Changes
+
+- API Change: The Permissions API endpoint will now return station permissions as an array (i.e.
+  `station: [{id: 1, permissions: ["foo"]]`) instead of an object (i.e. `station: { 1: ["foo"] }`). Please update any
+  calling code accordingly. You can still submit new permissions in either format and it will be accepted.
+
+- Backups to local filesystems will now back directly up to the destination file, instead of writing to a temp file and
+  copying it; this avoids doubling up on disk space requirements, prevents temp files from remaining on the filesystem
+  and allows you to mount a larger custom backup storage location without issues.
+
+- All web hooks can now have rate limits set for them, so they only dispatch once in the time specified, in case
+  third-party services need to receive updates less frequently.
+
+- Volume controls are hidden on iOS, as volume is immutable on that platform.
+
+- AzuraCast will now detect a rename in a radio station's base directory and automatically shut down services pointing
+  to the original directory, move relevant files to the new directory (and storage locations, if appropriate), then
+  start up services in the new directory seamlessly with a single rename step.
+
+- Similar to the above, AzuraCast will detect a rename in the station's "short code" (i.e. `my_radio_station`) and
+  update the custom `/listen/my_radio_station` URLs immediately to match.
 
 ## Bug Fixes
 
+- Fixed a bug where extra metadata (fade-in/out, cue-in/out, etc.) would not save on the Bulk Media Editor import.
+
+- Fixed a bug where extra metadata (fade-in/out, cue-in/out, etc.) could contain invalid values (i.e. -1) that would
+  cause the track to skip when playing.
+
+- Fixed a bug where file uploads would fail if the user navigated to a different directory while uploading the file.
+
 ---
 
-# AzuraCast 0.17.3 (Aug 3, 2022) 
-- Note: Development has slowed down while we continue to assist SilverEagle as he continues to find a new long term home. 
-  If you wish to assist SilverEagle during these times, please review this GitHub issue - [#5593](https://github.com/AzuraCast/AzuraCast/issues/5593)
+# AzuraCast 0.20.4 (Nov 23, 2024)
+
+Due to bug reports relating to the updated AutoDJ scheduler, we're reverting the relevant code back to the code as it
+previously existed in versions 0.20.2 and earlier. This is the sole change in this
+version of the application.
+
+**Technical note:** This is the last stable version of AzuraCast to use the Liquidsoap 2.2.x version series.
+
+---
+
+# AzuraCast 0.20.3 (Nov 17, 2024)
+
+## New Features/Changes
+
+- Installation administrators can now specify a maximum bitrate for AutoDJ mount points and remote relays, as well as a
+  maximum number of mount points and HLS streams. This can help multi-tenant AzuraCast installations avoid situations
+  where individual stations consume excessive resources.
+
+- You can now specify a priority value for playlists and song requests. If two playlists are set to play at the same
+  time, the higher-priority playlist will always play first. This also lets you prevent requests from always pre-empting
+  playlists by setting them to a lower priority, or forcing them to adhere to the priority rules of the playlists
+  themselves.
+
+- Automatically block bad crawlers, spammers and bots by setting `NGINX_BLOCK_BOTS=true` in `azuracast.env`. This
+  feature is powered by
+  the [Nginx Ultimate Bad Bot Blocker](https://github.com/mitchellkrogza/nginx-ultimate-bad-bot-blocker). If enabled,
+  the rules will automatically be updated daily to ensure up-to-date protection.
+
+## Code Quality/Technical Changes
+
+- Significant work has been done on the AutoDJ scheduler. While this work continues, we believe we have reached a stable
+  state where the updated scheduler can reliably be used in a majority of cases.
+
+- A majority of AzuraCast's custom Liquidsoap configuration has been moved to a "Common Runtime" file to improve
+  cacheability and maintainability. You may need to update your Liquidsoap custom configuration if you use any. Note
+  that this will be the last stable release before Liquidsoap 2.3.x ships, which will also require modification of
+  custom code.
+
+## Bug Fixes
+
+- Fixed a bug preventing song lyrics from persisting when editing media.
+
+- Fixed an error that caused the "Live Connected" webhook to dispatch when a DJ disconnects.
+
+---
+
+# AzuraCast 0.20.2 (Aug 1, 2024)
+
+## New Features/Changes
+
+- The streamer broadcasts list is now paginated and you can delete broadcasts in bulk.
+
+- A new setting in the "AutoDJ" tab of the station profile has been added: "Write Playlists to Liquidsoap". This
+  setting, enabled by default, controls whether non-essential (basically, fallback) playlists are defined in
+  Liquidsoap's configuration. Defining these playlists can give you more robust protection against AutoDJ failure, but
+  will greatly increase your initial CPU load if using ReplayGain or AutoCue. Most stations can safely disable this
+  feature to see a significant bump in performance when restarting their stations.
+
+- We now expose a Prometheus metrics endpoint at `GET /api/prometheus`. Prometheus is a popular tool for consuming
+  time-series data; metrics provided by AzuraCast include CPU load, disk and memory usage, and total and unique
+  listeners per-stream and per-station.
+
+## Code Quality/Technical Changes
+
+- We have rewritten the app startup process when the container is started or restarted. The new process is managed by
+  a "launcher" program that waits for core services to be available before starting others. This should dramatically cut
+  down on the number of HTTP 502 "Bad Gateway" errors seen in both web browsers and application logs during startup.
+
+- We continue to work with Moonbase59, maintainer of the AutoCue library we use, to update to the latest version as it
+  is being very rapidly iterated upon.
+
+- We now store a much larger amount of extra metadata associated with each media row; rather than create individual
+  database migrations for each update, we've moved this data into an `extra_metadata` field. If you're calling
+  media-related APIs, update your code accordingly. Currently, this field only includes metadata prefixed with `liq_`
+  or `replaygain_`, used by Liquidsoap, Replaygain, and AutoCue to significantly improve performance.
+
+- When using the Visual Cue Editor, if our script can't generate a waveform for a media file and the frontend javascript
+  library does it instead, we'll cache that generated waveform so future requests load instantly.
+
+- The application code has been restructured so that `package.json` is at the project root (like `composer.json`),
+  backend PHP application code is located in the `backend` folder, and frontend Vue/JS/SCSS code is located in
+  the `frontend` folder. This should not impact normal operations or plugins.
+
+- A minor change has been made to how the CSS styles the "Powered by AzuraCast" footer on public and private pages; the
+  new setup uses Flexbox to achieve a "sticky" footer without complicated CSS rules. If you're using custom CSS, you may
+  need to update your code to reflect this change.
+
+## Bug Fixes
+
+- API calls will always prefer to return JSON, even if not specified by the requesting client.
+
+---
+
+# AzuraCast 0.20.1 (Jun 2, 2024)
+
+## New Features/Changes
+
+- **AutoCue**: Thanks to the hard work
+  of [many community members](https://github.com/AzuraCast/AzuraCast/discussions/6252), we are beginning to offer the
+  exciting new AutoCue tool for all AzuraCast users. AutoCue will analyze your music files on-the-fly and calculate
+  ideal settings for cue, fade, volume and more. The result is a refined playback experience that sounds very
+  professional. Enable it on the "AutoDJ" tab of the station profile, under "Audio Processing".
+
+## Code Quality/Technical Changes
+
+- The lengths for title and artist metadata have been expanded to 255 characters.
+
+- We have updated our high-performance Now Playing library to incorporate new features that improve the program's
+  performance. You may need to update any custom code using it; see
+  our [documentation](https://www.azuracast.com/docs/developers/now-playing-data/#high-performance-updates) for updated
+  code samples.
+
+- AzuraCast now respects the `X-Forwarded-Host` and `X-Forwarded-Port` headers if provided by upstream reverse proxies.
+
+## Bug Fixes
+
+- Fixed an issue affecting concurrency of sync and Now Playing tasks; installations with large station counts should
+  especially notice a significant improvement in stability and reliability.
+
+- Fixed an issue that would cause stations to be unplayable on public pages if they briefly went Offline.
+
+- Fixed an issue where queues would fail to populate if media exists with no artist or title set.
+
+---
+
+# AzuraCast 0.20.0 (May 18, 2024)
+
+## New Features/Changes
+
+- **Podcast Batch Editing**: You can now batch edit podcast episodes by selecting the checkbox next to them on the
+  Episodes page table. This will let you modify the published date and other metadata for the episodes in bulk.
+
+- Added a new Webhook for the RadioReg service.
+
+## Code Quality/Technical Changes
+
+- We are investigating limited circumstances where our PHP server, RoadRunner, could return the wrong response for a
+  given request, particularly when the server is under heavy load. To investigate this, we have reverted back to the
+  more stable PHP-FPM service to serve PHP. This may result in poorer performance but should remove any issues of this
+  type.
+
+- Our original implementation of "High Availability" support was prone to mistakenly declaring that single-instance
+  AzuraCast installations were not the primary instance, which prevented synchronized tasks from running. We are
+  reverting this implementation to pursue more reliable ways of achieving this parallelism.
+
+- We have removed some MariaDB-specific elements of the code to allow for compatibility with newer versions of MySQL.
+
+## Bug Fixes
+
+- Fixed an issue where the first day of date-locked schedule items would not trigger the schedule.
+
+- An issue preventing some cron tasks from running was fixed.
+
+- A number of bugs and inconsistencies with the checkboxes in the Media Manager have been fixed.
+
+- The Song Playback Timeline will properly reflect date changes immediately, not needing a refresh.
+
+---
+
+# AzuraCast 0.19.7 (May 6, 2024)
+
+## Bug Fixes
+
+- This release is solely a bug fix release to incorporate updates to PHP dependencies that resolve critical bugs.
+
+---
+
+# AzuraCast 0.19.6 (May 5, 2024)
+
+## New Features/Changes
+
+- Several improvements have been made to Podcast functionality:
+    - You can now create podcasts that automatically synchronize with the contents of a media playlist; this is very
+      useful for uploading episodes of a podcast to your media directory, using the playlist to incorporate the podcast
+      into your playback, and also creating podcasts with the same media.
+    - You can now disable podcasts from public view while still editing them, similar to playlists.
+    - You can specify season and episode numbers on individual podcast episodes.
+    - Podcasts can have public HTML associated with them that will display on public pages (useful for things like links
+      to third-party syndication sites).
+
+## Code Quality/Technical Changes
+
+- Further improvements have been made to the ability to stream large responses from the server (i.e. media or podcast
+  downloads) without consuming excessive resources.
+
+- The Doctrine Database Abstraction Layer (DBAL) and ORM have been updated to their latest versions. If you are building
+  a plugin related to database functionality, this may require updates to your code.
+
+## Bug Fixes
+
+- Fixed an issue causing stations with special characters (especially `()`) to break the cache mechanism, preventing
+  several dashboard pages from displaying.
+
+- Fixed an issue preventing the WebDJ from connecting properly.
+
+- Fixed an issue preventing some passkeys from authenticating on the login screen.
+
+- Fixed a minor bug preventing the Statistics Overview page from appearing.
+
+- Fixed an error that would sometimes cause the "Edit Station Profile" page to break on stations that had empty
+  configuration blocks (i.e. were syndication-only).
+
+- Fixed an error causing messages like "Cannot rollback transaction" during updates or setup.
+
+---
+
+# AzuraCast 0.19.5 (Feb 20, 2024)
+
+## New Features/Changes
+
+- **Redesigned Public Podcast Pages**: We've completely overhauled the public-facing podcasts pages to be a single
+  cohesive experience similar to our On-Demand streaming and other public pages.
+    - Podcasts and episodes are searchable, sortable and paginated, and the pages now use our built-in player for
+      playing back the podcasts themselves, ensuring uniform controls across browsers.
+    - Because it's built in our new frontend, you can also continue listening to your podcast episode as you navigate
+      around the podcast pages.
+    - The entire new podcast component is also now an embeddable widget in external pages.
+
+- **Improved Listeners Report**: You can now search and sort through the listeners report, view several additional
+  fields supplying more information about your listeners, and filter your results to only show listeners with a certain
+  total connected time or using a certain kind of device.
+
+- **Custom Bitrates**: When configuring Mount Points, Remote Relays, or broadcast recordings, you can now specify a
+  custom bitrate in kilobits per second (kbps) if you want to use a bitrate outside the default options.
+
+- You can now submit a manual metadata update directly via the station profile page. This is useful in cases where the
+  metadata does not update correctly (i.e. from a live DJ).
+
+## Code Quality/Technical Changes
+
+- Our Docker image is now built directly on top of the official PHP image, which is powered by Debian Bookworm instead
+  of Ubuntu 22.04 (Jammy). For a majority of station operators, this change will not impact your station operations at
+  all, but if you specify custom packages to be installed on startup, you should make sure those packages exist in the
+  Debian repository as well.
+
+- You can now specify a path when using the `azuracast:media:reprocess` command to only mark items starting with the
+  given (file or directory) path for reprocessing.
+
+- The list of stations on the home dashboard is now paginated, searchable and sortable.
+
+- The "Reorder" dialog for sequential playlists has been emphasized better and now has a "move to top" and "move to
+  bottom" button.
+
+- The Upcoming Song Queue page automatically refreshes periodically.
+
+## Bug Fixes
+
+- We're continuing to work with Liquidsoap to resolve known issues relating to crackles and pops on crossfade
+  transitions and issues with metadata not updating on shorter tracks.
+
+---
+
+# AzuraCast 0.19.4 (Jan 4, 2024)
+
+## New Features/Changes
+
+- **Passwordless Login with Passkeys**: You can now associate passkeys (also known as WebAuthn) with your account and
+  then automatically log in with those passkeys any time. Popular passkeys include those provided by your operating
+  system (i.e. Windows Hello or Apple's Safari passkey system) or may be provided by third-party software (like
+  Bitwarden). They're a secure alternative to passwords and two-factor authentication. You can register multiple
+  passkeys with a single account, and if you ever misplace your passkey, you can still log in with your regular e-mail
+  address and password (and two-factor auth, if you've set one up).
+
+## Code Quality/Technical Changes
+
+- We've even further improved our performance on production installations by switching from PHP-FPM to the Roadrunner
+  PHP application engine and tweaking how we handle caching on things like album art images. These changes should
+  dramatically reduce how often PHP is called, and make it much faster when it is called.
+
+- Our High-Performance Now Playing updates through Centrifugo now send the current Now Playing data immediately upon
+  connection, meaning you can rely on it exclusively for Now Playing data instead of making another API call to load the
+  initial data. See
+  our [updated code samples](https://www.azuracast.com/docs/developers/now-playing-data/#high-performance-updates) for
+  more information.
+
+- MariaDB has been updated to 11.2. Databases will automatically be upgraded on the first boot after updating.
+
+- If you upload media to a folder and that folder is set to auto-assign to a playlist, the media will *instantly* be a
+  part of that playlist, not subject to a sync task delay; this should greatly improve the user experience when using
+  this feature.
+
+- We've identified several places in our Docker image where caches led to excessive image size. We've reduced our
+  uncompressed Docker image size from 3GB to 1.4GB, and the compressed images from 700MB to under 500MB. This should
+  mean faster update pulls and less disk space used for installation operators.
+
+## Bug Fixes
+
+- An issue causing audio recordings to break the station filesystem was fixed by Liquidsoap, and the fixed version is
+  included in this version of AzuraCast.
+
+- A bug causing fade/cue/etc. values on media of "0" or "0.0" to not properly disable crossfading/etc. has been fixed.
+
+---
+
+# AzuraCast 0.19.3 (Nov 18, 2023)
+
+## New Features/Changes
+
+## Code Quality/Technical Changes
+
+- You can now reset sorting on a data table without needing to reload the page by clicking the sorted field once again;
+  the first click will toggle between ascending/descending mode, then the second click will reset to the default sort.
+
+## Bug Fixes
+
+- A bug preventing SSL (HTTPS) certificates from loading from the new storage location has been fixed.
+
+- Fixed a bug where the display of song playback times would wildly fluctuate in the built-in player.
+
+- Fixed a bug preventing audio playback from working correctly inside the "Reorder Playlist" and "Streamer Broadcast"
+  modals.
+
+---
+
+# AzuraCast 0.19.2 (Nov 7, 2023)
+
+## New Features/Changes
+
+- **Built-in Documentation**: AzuraCast now bundles its own documentation alongside the application itself. By
+  visiting `/docs`, you can see the documentation as it existed when the version you're using was released. This is
+  useful if you're on an older version or in an environment without good Internet connectivity.
+
+- The "Listeners by Time Period" report has been expanded to include showing either "Average Listeners" (the previous
+  mode) or "Unique Listeners", similar to the dashboard charts. You can also view per-hour totals for every given day of
+  the week.
+
+- A new webhook has been added to broadcast changes to the GetMeRadio API. GetMeRadio is a popular aggregator of web
+  radio stations.
+
+## Code Quality/Technical Changes
+
+- The Google Analytics V3 and Twitter (now X) web hooks have been retired and are no longer supported. Google Analytics
+  has removed support for V3 properties entirely; we recommend switching to Analytics V4. Twitter has deprecated version
+  1 of their API in favor of version 2, which is not readily accessible to applications like ours.
+
+- Icons used around the application have been switched from an icon font to directly using SVGs to dramatically reduce
+  the overall size of CSS assets.
+
+- When importing media, multiple entries in a single metadata field (i.e. multiple Genre values) will be separated by a
+  semicolon (i.e. "Rock; Classic").
+
+- The "Genre" field for individual media items has been increased from 30 characters maximum to 255.
+
+- The "System Debugger" page now automatically reloads the sync task and message queue statuses once per minute, and can
+  be manually refreshed on-demand.
+
+- If using S3-style storage locations, you can now indicate that AzuraCast should use path-style endpoints instead of
+  subdomains; this is useful for self-hosted services like MinIO or other services that rely on subdirectories instead
+  of subdomains.
+
+- We have changed the mapping for many persistent items in our Docker filesystem to map to folders
+  within `/var/azuracast/storage`. To preserve back-compatibility, for most users we will continue to map the individual
+  folders within that as separate volumes, but if you manually manage your volume mounts, you can now just mount a
+  volume at `/var/azuracast/storage` instead of each of the separate subfolders.
+
+## Bug Fixes
+
+- For stations using the AutoDJ to broadcast, the threshold for what counts as "Station Offline" has been changed, which
+  should dramatically reduce the number of situations where the station is indeed online and broadcasting but appears
+  offline in players and API responses.
+
+- The public download for the Stereo Tool plugin module was changed by the vendor in a way that broke compatibility with
+  our uploader tool. This has been resolved, and plugin version 10.10 is now supported in the application.
+
+- Several issues with DataTable pagination and display have been fixed.
+
+- Fixed an issue preventing web updates from going through correctly.
+
+- Fixed an issue where disabled stations wouldn't show their profile pages at all.
+
+---
+
+# AzuraCast 0.19.1 (Aug 21, 2023)
+
+## New Features/Changes
+
+- **Radio.de Webhook**: We have added a webhook allowing you to submit metadata changes to the popular German radio
+  aggregator service [radio.de](https://radio.de).
+
+## Code Quality/Technical Changes
+
+- We replaced the "IANA Reserved Address" check for webhook URLs with a different method of restricting webhook debug
+  log access to station operators. You can once again use "internal" IP addresses, like 192.168.x.x, as needed.
+
+- All files and folders that begin with "." will be hidden from the station Media Manager panel.
+
+- On data tables with more than 10 pages of data, you will now see a form input to enter any page number, and a "Go"
+  button to go directly to that page. You can also hit the Enter key on your keyboard to jump to the entered page.
+
+- Line numbers will appear next to certain log files when viewed (i.e. the Liquidsoap configuration), assisting in
+  identifying which line of code is causing any reported errors.
+
+## Bug Fixes
+
+- If multiple values are provided for a given ID3 tag (i.e. a Genre tag separated by semicolons), we will include all of
+  the genres in the processed file.
+
+- Fixed an issue preventing the "Send Test E-mail" modal from appearing on the System Settings page.
+
+- Fixed an issue preventing embeddable players from working in private (Incognito, Firefox/Safari Private) windows.
+
+- Fixed an issue preventing advanced configuration, authhash and other settings from appearing on the Mount Points edit
+  modal dialog.
+
+- Fixed a minor UI bug affecting buttons and playback times in the header inline player.
+
+- Fixed an issue causing the site background to not be transparent on dark theme embeds.
+
+- Enabled searching on the Upcoming Song Queue page.
+
+---
+
+# AzuraCast 0.19.0 (Aug 17, 2023)
+
+## New Features/Changes
+
+- **Update to Liquidsoap 2.2.x**: We're updating to the latest version of Liquidsoap, which includes many bug fixes,
+  performance improvements and other changes. We have adopted our syntax to match Liquidsoap's new supported syntax, but
+  if you use custom Liquidsoap code, you will need to update your code accordingly. You can see the most important
+  changes in this [migration guide](https://www.liquidsoap.info/doc-dev/migrating.html#from-2.1.x-to-2.2.x). The most
+  common changes you will need to make are to mutable (`ref()`) variables:
+    - `!var` becomes `var()`
+    - `var := value` optionally becomes `var.set(value)`
+
+- **Support for Direct StereoTool/Liquidsoap Integration**: In Liquidsoap 2.2.x, StereoTool is now directly supported
+  within the software, resulting in better performance and significantly less delay in processing. We now support
+  uploading the plugin version of StereoTool from the vendor's web site. We will use either the CLI version or the
+  plugin version if it is uploaded. You can now also remove StereoTool from your installation entirely from the "Install
+  StereoTool" page.
+
+- **Initial Multi-Server Support**: AzuraCast now includes initial support for connecting multiple AzuraCast servers to
+  a shared database instance. The system will automatically choose a "primary" instance that runs routine synchronized
+  tasks, with a secondary instance that will automatically take over these functions if the main installation is
+  nonresponsive.
+
+- **Custom "Station Offline" and "Live Broadcast" Messages**: You can now specify, on a per-station level, the default
+  message that shows when the station is offline or when a DJ has connected but has not yet sent any metadata. The
+  former is located on the Branding Configuration page, and the latter is under the "Streamers/DJs" tab on the station
+  profile.
+
+## Code Quality/Technical Changes
+
+- **Frontend Overhaul**: We have updated the code that powers the browser-facing frontend of our application. In
+  particular, we've upgraded from Bootstrap 4 to 5. Most users of the application won't need to change anything as a
+  result of this, but if you use custom CSS or JavaScript, the following changes will be necessary:
+    - jQuery has been removed. If you used jQuery, you can likely replace any jQuery code with vanilla javascript. See
+      migration guides like this one for help: https://tobiasahlin.com/blog/move-from-jquery-to-vanilla-javascript/
+    - The theme selectors have changed from `[data-theme="dark/light"]` to `[data-bs-theme="dark/light"]`.
+    - Several colors and parameters can be customized just by changing CSS variables. For more information on the
+      specific CSS variables exposed by Bootstrap 5, visit this
+      page: https://getbootstrap.com/docs/5.3/customize/css-variables/
+    - Several class names and identifiers have been renamed. Use the Inspect Element tool to identify the new names.
+    - The administration page and all per-station management panels are now "Single-Page Applications". Along with a
+      smoother user experience on those sections, you'll also enjoy continued audio playback across pages!
+
+## Bug Fixes
+
+- When adding media to playlists, the system will no longer remove the media from all playlists and then re-add it; it
+  will instead check the existing playlist associations and only add or remove modified ones. This will prevent issues
+  with losing the playback order of media on sequential playlists and other related issues.
+
+---
+
+# AzuraCast 0.18.5 (Jun 16, 2023)
+
+This release backports a bug fix from the current Rolling Release version so that users can take advantage of it
+immediately:
+
+- A bug preventing administrators from properly setting passwords for users via the Administer Users panel has been
+  fixed.
+
+---
+
+# AzuraCast 0.18.3 (Jun 5, 2023)
+
+This release solely exists to bump the version of AzuraCast up to 0.18.3, which was erroneously listed as the stable
+release where the bug reports in 0.18.2 were fixed.
+
+---
+
+# AzuraCast 0.18.2 (Jun 5, 2023)
+
+## New Features/Changes
+
+## Code Quality/Technical Changes
+
+- We have disabled the Meilisearch search tool, as it consumed a large amount of resources on smaller systems and it was
+  difficult to ensure the index exactly matched the current state of the filesystem. We will be working to further
+  optimize search queries to achieve similar improvements without any extra services.
+
+- In sections of our application that depend on IP addresses, we've tightened our allowed IP addresses significantly to
+  improve security and prevent brute-force flooding. If you're using a reverse proxy or CloudFlare, you should update
+  your "IP Address Source" under the "System Settings" page.
+
+## Bug Fixes
+
+- File downloads will preserve the "Access-Control-Allowed-Origin" header you set in System Settings.
+
+- Added extra reliability to fetching Now Playing information from remote relays.
+
+- Charts won't attempt to load on the dashboard if analytics are disabled.
+
+---
+
+# AzuraCast 0.18.1 (Apr 21, 2023)
+
+This is an incremental bug-fix release to apply fixes for an issue identified after the release of 0.18.0.
+
+## New Features/Changes
+
+- None
+
+## Code Quality/Technical Changes
+
+- Added improved HTML escaping at multiple points across the application. This is a precautionary measure in the wake of
+  the CVE announced (and fixed in version 0.18.0). There are no known exploits targeting the sections of code remedied,
+  but this helps ensure we are better insulated against such vulnerabilities moving forward.
+
+## Bug Fixes
+
+- Fixed a bug in newer builds of Icecast-KH that caused the service to fail to start up intermittently.
+
+---
+
+# AzuraCast 0.18.0 (Apr 19, 2023)
+
+This release includes numerous important new features and a vulnerability fix that is particularly important for
+multi-tenant installations (i.e. resellers). Upgrading is strongly recommended in these environments.
+
+## New Features/Changes
+
+- **Fix for [CVE-2023-2191](https://nvd.nist.gov/vuln/detail/CVE-2023-21910)**: An issue was identified where a user who
+  already had an AzuraCast account could update their display name to inject malicious JavaScript into the header menu
+  of the site. In a majority of cases, this menu is only visible to the current logged-in user (pages like the "
+  Administer Users" page are unaffected by this vulnerability), but if a higher-privileged administrator uses the "Log
+  In As" feature to masquerade as a user, then the JavaScript injection could exfiltrate certain data. Anonymous members
+  of the public cannot exploit this vulnerability in an AzuraCast installation, so it is primarily of concern for
+  multi-tenant installations (i.e. resellers).
+
+- **Smarter, Faster Searches**: For searches in the Media Manager, as well as the public-facing Requests and On Demand
+  pages, we now use a new search tool called Meilisearch that allows for very fast, very accurate search results, as
+  well as more complex search queries (and other goodies, like typo correction).
+
+- **Master_me and Post-Processing Tweaks**: We now have built-in support
+  for [master_me](https://github.com/trummerschlunk/master_me), an open-source audio mastering tool that helps add
+  polish and "punch" to your streams. Its functionality is similar to Stereo Tool, but because it's open-source, we
+  include it in every AzuraCast installation. You can now also customize whether our post-processing step includes your
+  live DJ performances.
+
+## Code Quality/Technical Changes
+
+- **Initial Podman Support**: Podman is an increasingly popular drop-in replacement for Docker, originally from the
+  RedHat Enterprise Linux community of distributions. We have updated our Docker utility script to include a Podman
+  support mode. Feel free to report any bugs to us!
+
+- **Install Custom Packages at Startup**: If you want to take advantage of specific Ubuntu packages available
+  via `apt-get install`, you can now specify those files in an `azuracast.env` environment variable
+  named `INSTALL_PACKAGES_ON_STARTUP`. Because users can now install any extra packages they need, we are removing some
+  non-essential packages from our shipped Docker image, namely several LADSPA audio plugins; to reinstall the full set
+  of plugins that were previously available, add this line to your `azuracast.env` file:
+
+  ```
+  INSTALL_PACKAGES_ON_STARTUP="frei0r-plugins-dev multimedia-audio-plugins swh-plugins tap-plugins lsp-plugins-ladspa"
+  ```
+
+- Our Docker Utility Script now directly supports version 2 of Docker Compose (invoked using `docker compose` rather
+  than `docker-compose`).
+
+- Our Dropbox storage location support now includes support for Dropbox's new short-lived access tokens. We include
+  instructions on how to set up and use Dropbox as an AzuraCast storage location on the Storage Locations administration
+  page.
+
+- We've re-tuned the Now Playing updates from how they worked in version 0.17.7 so they will no longer consume very high
+  amounts of CPU and RAM on installations with many (30+) stations.
+
+- We have made more changes to how our Message Queue system works in order to ensure we don't encounter a "runaway
+  queue" problem with larger libraries.
+
+- Icecast-KH has been updated to its latest version.
+
+## Bug Fixes
+
+- A minor bug causing timeouts with the Web Updater has been fixed.
+
+- A bug causing stations to show as "Station Offline" immediately after an initial start or restart has been fixed.
+
+- The error placeholder track (by default, "AzuraCast - AzuraCast is live!") will no longer show up in track history.
+
+- A bug preventing station-specific branding changes from applying to embedded pages has been fixed.
+
+---
+
+# AzuraCast 0.17.7 (Jan 27, 2023)
+
+## New Features/Changes
+
+- **Web Updater**: We're rolling out an initial test of our web updater component for Docker installations. Based on
+  [Watchtower](https://containrrr.dev/watchtower/), our updater sits outside our normal Docker image and can handle
+  pulling the latest image for your installation, spinning down the current version and updating to the newer one, all
+  from entirely within your web browser. Note that if you want to make any core configuration changes (i.e. change your
+  release channel or other environment configuration) you must use the regular update script.
+
+- **Per-Station Branding**: You can now provide custom album art, public page backgrounds, CSS and JavaScript on a
+  per-station basis, using a new Station Branding page that is very similar to the system-wide Branding page.
+
+- The newer version of Google Analytics (V4) is supported as a Web Hook option now.
+
+## Code Quality/Technical Changes
+
+- Redis was removed in version 0.17.6 in order to yield fewer running tasks on servers by default; we have noticed that,
+  for some IO-limited servers, this imposes a significant performance penalty, so we have restored Redis to our default
+  image. You can still disable it via the `ENABLE_REDIS` environment value.
+
+- Under the hood, we have updated our frontend components to Vue 3, as Vue 2 will reach End of Life (EOL) in under a
+  year. We are currently using a Vue 2 compatibility layer due to our UI library (BootstrapVue) only supporting Vue 2
+  currently. Once this library updates, we will be able to fully use Vue 3, which will afford us significant performance
+  improvements.
+
+- On public player pages, we now emit a `player-ready` event that triggers when the Vue components are fully rendered;
+  you can listen to this via `$(document).on('player-ready')` in custom JavaScript.
+
+- The list of custom ID3 tags that can be assigned to Custom Fields has been expanded back to its original value.
+
+## Bug Fixes
+
+- The elapsed playback time on our public player pages is now based on the AzuraCast server time, ensuring that even if
+  it's out of sync with your browser's time, this won't affect the elapsed play time. It's strongly recommended, if you
+  can, to use the "High-Performance Now Playing Updates" system setting for the most accurate updates.
+
+- Lossless (Flac) streams will no longer show a bitrate on Mount Points/Remote Relays.
+
+- Podcast episodes will now properly be sorted by upload date in descending order, rather than name.
+
+- If you change theme or language on the profile page, the page will reload to apply your changes.
+
+- Sorting by custom fields is once again working on the Media Manager page.
+
+---
+
+# AzuraCast 0.17.6 (Dec 5, 2022)
+
+## New Features/Changes
+
+- **High-Performance Now Playing Updates are Back!** A few versions ago, we had to retire our previous
+  high-performance (Websocket/SSE) Now Playing updates system due to an error in the library on Ubuntu 22.04. We have
+  since found an excellent replacement library and implemented it. If you're using Websockets or Server-Sent Events (
+  SSE) for your Now Playing updates, you'll need to make minor changes to how you connect, which we've documented
+  here: https://www.azuracast.com/docs/developers/now-playing-data/#high-performance-updates
+
+- On Mastodon and Twitter posts, you can now specify different message bodies for the different web hook trigger types (
+  i.e. live DJ connect/disconnect or station online/offline).
+
+- Web Hooks can now also be dispatched specifically when a song changes _and_ a DJ/streamer is live.
+
+## Technical Changes
+
+- When uploading a background or custom album art, whatever format is supplied (between PNG, JPG and WEBP) will be the
+  format saved to disk. If possible, we recommend using WebP as it offers significant bandwidth savings.
+
+## Bug Fixes
+
+- Fixed a bug where posting URLs required "https://" prefixes but the documentation specifically said not to include
+  them.
+
+- Fixed an issue where malfunctioning stations would restart infinitely, causing excessive CPU load.
+
+- Fixed a template issue preventing the service worker from working on public player pages.
+
+---
+
+# AzuraCast 0.17.5 (Nov 21, 2022)
+
+## New Features/Changes
+
+- **Mastodon Posting Support**: Publish to Mastodon via a Web Hook, the same way you do with Twitter!
+
+- **Cover Art Files Support**: Many users keep the cover art for their media alongside the media in a separate image
+  file. AzuraCast now detects image files in the same folder as your media and uses it as the default album art for that
+  media. Because cover art files are often named a variety of things, we currently will use _any_ image file that exists
+  alongside media. You can also now view cover art via the Media Manager UI.
+
+- **24-Hour Time Display Support**: You can now choose whether to view time in 12 or 24 hour format from your user
+  profile, or use the default settings for your locale.
+
+## Code Quality/Technical Changes
+
+- Because both our Docker and Ansible installations are managed by Supervisor now, we can view the realtime status of
+  all essential application services, and even restart them directly from the web interface.
+
+- If you enter the link for a public player page into a media player app (i.e. VLC), it will automatically redirect to
+  the playlist file and play appropriately.
+
+## Bug Fixes
+
+- HLS streams will now be included in Playlist (PLS/M3U) file downloads.
+
+- Fixed an issue where listener connection times over a day didn't properly show up.
+
+- Fixed several issues contributing to slow load times on media manager pages.
+
+- Fixed a bug where if a station only had "Allowed IPs", it wouldn't be enforced.
+
+- Fixed changing the station's URL stub (short name) not prompting the user to reload the station configuration.
+
+- Fixed an issue preventing the new Dropbox app key/app secret from saving.
+
+---
+
+# AzuraCast 0.17.4 (Oct 24, 2022)
+
+## Code Quality/Technical Changes
+
+- **Smarter database migrations:** A common source of problems with AzuraCast upgrades is experiencing a faulty or
+  interrupted database migration, leaving your database in a state that we can't automatically recover from. While we
+  can't wrap database changes in transactions due to our use of MariaDB, we can do the next best thing, which is to take
+  an automatic snapshot of your database just prior to the migration and roll back to that automatically upon failure.
+  This even applies if the entire update process is stopped and restarted, where the original database will be restored
+  on the second update attempt.
+
+- The enforcement of IP block rules has changed; now, if you have a list of "Allowed" IP addresses, this will be
+  considered authoritative when evaluating whether a connecting listener is allowed; if the user is not on the allowed
+  list, their connection will be rejected. If the "Allowed" list is empty, the previous normal rules (blocked IPs,
+  countries, user agents, etc) will be followed instead.
+
+- Storage locations using Dropbox can now use an App Key and App Secret to authenticate instead of auth tokens, which
+  have been phased out in recent updates.
+
+- In a previous version, we added a rule that would prevent stations from starting up unless they had at least one
+  active playlist with at least one music file to play. Several stations reported unique edge cases that didn't work
+  with this configuration, so it has been removed.
+
+- Ansible installations now support Ubuntu 22.04 (Jammy) along with existing support for 20.04 (Focal).
+
+## Bug Fixes
+
+- Fixed a bug preventing the Remote Relays page from showing in some situations.
+
+- Fixed a bug where sometimes, stations would create in an incomplete state with uninitialized storage locations, thus
+  becoming impossible to manage or modify.
+
+- Fixed an issue preventing station cloning from working.
+
+- Jingles will no longer appear on the "best/worst performing songs" lists.
+
+- Fixed a bug preventing Ogg (Vorbis, Opus, etc) files from being correctly processed.
+
+- Fixed a bug where two stations that had a shared string in their short names (i.e. `station` and `station_1`) would
+  conflict with one another, causing the public listening URLs of the latter station to fail to resolve correctly.
+
+- Fixed a bug where directories in the "Move Files" modal weren't sorted by path.
+
+- Fixed a situation where scheduled items could be queued to play before a DJ/streamer goes live, then be cued to play
+  after they have finished, even if their scheduled time slot has ended during that broadcast.
+
+- Fixed a bug preventing multiple playlists and/or custom fields from appearing in the bulk media CSV export.
+
+- Fixed a bug causing song requests to use the interrupting queue instead of the regular song queue.
+
+---
+
+# AzuraCast 0.17.3 (Aug 3, 2022)
+
+- Note: Development has slowed down while we continue to assist SilverEagle as he continues to find a new long term
+  home.
+  If you wish to assist SilverEagle during these times, please review this GitHub issue
+    - [#5593](https://github.com/AzuraCast/AzuraCast/issues/5593)
 
 ## New Features/Changes
 
@@ -27,7 +832,7 @@ release channel, you can take advantage of these new features and fixes.
 
 - Fixed a bug where the station could not be skipped if a Remote URL playlist was enabled.
 
-- Fixed a bug with logging (Liquidsoap, Docker, etc) to reduce CPU load issues. 
+- Fixed a bug with logging (Liquidsoap, Docker, etc) to reduce CPU load issues.
 
 - Fixed missing city fields in listener data.
 
@@ -334,7 +1139,7 @@ release channel, you can take advantage of these new features and fixes.
   installation with fewer containers. If you are not using the multi-site setup (i.e. hosting another site on the same
   Docker installation), no changes are required to your installation. If you want to continue using the multi-site
   installation, you can follow
-  the [instructions in our documentation](https://docs.azuracast.com/en/administration/docker/multi-site-installation).
+  the [instructions in our documentation](https://www.azuracast.com/docs/administration/multi-site-installation/).
 
 - We have updated how we handle Listener Reports to significantly reduce both memory and overall processing times,
   meaning stations with large listener counts can now more easily view and export reports for long time periods.
@@ -1539,7 +2344,7 @@ important updates to the software in that time, especially in the fields of reli
   the "Now Playing" API, which is a rich summary of the state of a radio station at the moment. To improve performance
   of more popular stations using our software, we've introduced two new methods of accessing this data: a static JSON
   file and a live Websocket/EventSource-driven plugin. You can read more on our
-  new [Now Playing Data APIs Guide](https://docs.azuracast.com/en/developers/apis/now-playing-data).
+  new [Now Playing Data APIs Guide](https://www.azuracast.com/docs/developers/now-playing-data/).
 
 ## Bug Fixes and Minor Updates
 

@@ -2,7 +2,7 @@ user azuracast;
 worker_processes auto;
 worker_rlimit_nofile 65000;
 
-error_log stderr;
+error_log /dev/stderr {{if eq .Env.APPLICATION_ENV "development"}}info{{else}}warn{{end}};
 pid /var/run/nginx.pid;
 
 include /etc/nginx/modules-enabled/*.conf;
@@ -32,16 +32,15 @@ http {
     server_tokens off;
     keepalive_timeout 65;
 
-{{if eq .Env.APPLICATION_ENV "production"}}
     sendfile on;
-{{else}}
-    sendfile off;
-{{end}}
 
-    client_max_body_size 50M;
-    client_body_temp_path /tmp/app_nginx_client 1 1;
+    client_max_body_size {{ default .Env.NGINX_CLIENT_MAX_BODY_SIZE "50M" }};
+    client_body_temp_path /tmp/nginx_client 1 1;
 
-    fastcgi_temp_path /tmp/app_fastcgi_temp 1 1;
+    fastcgi_temp_path /tmp/nginx_fastcgi 1 1;
+
+    fastcgi_cache_path /tmp/nginx_cache levels=1:2 keys_zone=app:50m max_size=1g inactive=60m use_temp_path=off;
+    fastcgi_cache_key "$scheme$request_method$host$request_uri";
 
     proxy_max_temp_file_size 0;
 
@@ -64,6 +63,46 @@ http {
       default off;
       https on;
     }
+
+    # Enable Gzip compression
+    gzip on;
+
+    gzip_vary on;
+    gzip_buffers 128 4k;
+
+    # Compression level (1-9)
+    gzip_comp_level 5;
+
+    # Don't compress anything under 256 bytes
+    gzip_min_length 256;
+
+    # Compress output of these MIME-types
+    gzip_types
+        application/atom+xml
+        application/javascript
+        application/json
+        application/rss+xml
+        application/vnd.ms-fontobject
+        application/x-font-ttf
+        application/x-font-opentype
+        application/x-font-truetype
+        application/x-javascript
+        application/x-web-app-manifest+json
+        application/xhtml+xml
+        application/xml
+        font/eot
+        font/opentype
+        font/otf
+        image/svg+xml
+        image/x-icon
+        image/vnd.microsoft.icon
+        text/css
+        text/plain
+        text/javascript
+        text/x-component;
+
+    # Disable gzip for bad browsers
+    gzip_disable "MSIE [1-6]\.(?!.*SV1)";
 
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/sites-enabled/*;

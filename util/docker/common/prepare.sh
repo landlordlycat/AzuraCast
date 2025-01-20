@@ -7,22 +7,21 @@ set -x
 ## http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=594189
 export INITRD=no
 
-# Add default timezone.
-echo "UTC" > /etc/timezone
+export DEBIAN_FRONTEND=noninteractive
 
-# Avoid ERROR: invoke-rc.d: policy-rc.d denied execution of start.
-sed -i "s/^exit 101$/exit 0/" /usr/sbin/policy-rc.d 
+# Enable contrib and nonfree repos
+sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources
+echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/backports.list
 
-## Enable Ubuntu Universe, Multiverse, and deb-src for main.
-sed -i 's/^#\s*\(deb.*main restricted\)$/\1/g' /etc/apt/sources.list
-sed -i 's/^#\s*\(deb.*universe\)$/\1/g' /etc/apt/sources.list
-sed -i 's/^#\s*\(deb.*multiverse\)$/\1/g' /etc/apt/sources.list
 apt-get update
 
 ## Fix some issues with APT packages.
 ## See https://github.com/dotcloud/docker/issues/1024
 dpkg-divert --local --rename --add /sbin/initctl
 ln -sf /bin/true /sbin/initctl
+
+# Add default timezone.
+echo "UTC" > /etc/timezone
 
 ## Replace the 'ischroot' tool to make it always return true.
 ## Prevent initscripts updates from breaking /dev/shm.
@@ -31,29 +30,26 @@ ln -sf /bin/true /sbin/initctl
 dpkg-divert --local --rename --add /usr/bin/ischroot
 ln -sf /bin/true /usr/bin/ischroot
 
-# apt-utils fix for Ubuntu 16.04
-apt-get install -y --no-install-recommends apt-utils
-
 ## Install HTTPS support for APT.
-apt-get install -y --no-install-recommends apt-transport-https ca-certificates
-
-## Install add-apt-repository
-apt-get install -y --no-install-recommends software-properties-common
+apt-get install -y --no-install-recommends apt-utils apt-transport-https ca-certificates
 
 ## Upgrade all packages.
 apt-get dist-upgrade -y --no-install-recommends -o Dpkg::Options::="--force-confold"
 
 ## Fix locale.
-apt-get install -y --no-install-recommends language-pack-en
+apt-get install -y --no-install-recommends locales
 
-locale-gen en_US
-update-locale LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+
+locale-gen
+dpkg-reconfigure locales
 
 # Make init folders
 mkdir -p /etc/my_init.d
 
 # Install other common scripts.
-apt-get install -y --no-install-recommends tini gosu curl wget tar zip unzip git rsync tzdata gpg-agent openssh-client
+apt-get install -y --no-install-recommends \
+    lsb-release tini gosu curl wget tar zip unzip xz-utils git rsync tzdata gnupg gpg-agent openssh-client
 
 # Add scripts
 cp -rT /bd_build/scripts/ /usr/local/bin

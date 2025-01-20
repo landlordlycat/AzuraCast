@@ -1,3 +1,7 @@
+upstream centrifugo {
+    server 127.0.0.1:6020;
+}
+
 upstream php-fpm-internal {
     server unix:/var/run/php-fpm-internal.sock;
 }
@@ -5,6 +9,12 @@ upstream php-fpm-internal {
 upstream php-fpm-www {
     server unix:/var/run/php-fpm-www.sock;
 }
+
+{{if eq .Env.APPLICATION_ENV "development"}}
+upstream vite {
+    server 127.0.0.1:5173;
+}
+{{end}}
 
 # Internal connection handler for PubSub and internal API calls
 server {
@@ -31,6 +41,7 @@ server {
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         fastcgi_param DOCUMENT_ROOT $realpath_root;
+        fastcgi_param IS_INTERNAL true;
         include fastcgi_params;
 
         fastcgi_read_timeout 600;
@@ -38,23 +49,14 @@ server {
 
         internal;
     }
-
-    location ~ /pub/([^\/]+)$ {
-        nchan_publisher;
-        nchan_channel_group "azuracast_nowplaying";
-        nchan_channel_id $1;
-
-        nchan_message_buffer_length 1;
-        nchan_message_timeout 16s;
-    }
 }
 
 server {
-    listen 80;
-    listen 443 default_server http2 ssl;
+    listen {{ default .Env.AZURACAST_HTTP_PORT "80" }};
+    listen {{ default .Env.AZURACAST_HTTPS_PORT "443" }} default_server http2 ssl;
 
-    ssl_certificate        /var/azuracast/acme/ssl.crt;
-    ssl_certificate_key    /var/azuracast/acme/ssl.key;
+    ssl_certificate        {{ default .Env.ACME_DIR "/var/azuracast/storage/acme" }}/ssl.crt;
+    ssl_certificate_key    {{ default .Env.ACME_DIR "/var/azuracast/storage/acme" }}/ssl.key;
 
     ssl_protocols TLSv1.3 TLSv1.2;
     ssl_prefer_server_ciphers on;
@@ -75,8 +77,15 @@ server {
 
     # LetsEncrypt handling
     location /.well-known/acme-challenge {
-        alias /var/azuracast/acme/challenges;
+        alias {{ default .Env.ACME_DIR "/var/azuracast/storage/acme" }}/challenges;
         try_files $uri =404;
+    }
+
+    # Built-in docs
+    location /docs {
+        alias /var/azuracast/docs;
+        expires 1d;
+        index index.html;
     }
 
     # Serve a static version of the nowplaying data for non-PHP-blocking delivery.
@@ -86,6 +95,12 @@ server {
 
         alias /var/azuracast/www_tmp/nowplaying;
         try_files $uri =404;
+    }
+
+    # Websocket/SSE Now Playing Updates
+    location ~ ^/api/live/nowplaying/(\w+)$ {
+        include proxy_params;
+        proxy_pass http://centrifugo/connection/uni_$1?$args;
     }
 
     # Default clean URL routing
@@ -103,51 +118,61 @@ server {
     }
 
     location /static/uploads {
-        rewrite ^(.+)\.(?:\w+)\.(js|css|png|jpg)$ $1.$2 last;
+        rewrite ^(.+)\.(?:\w+)\.(js|css|png|jpg|webp)$ $1.$2 last;
 
-        alias /var/azuracast/uploads;
+        alias {{ default .Env.UPLOADS_DIR "/var/azuracast/storage/uploads" }};
         try_files $uri =404;
     }
 
-    location /static/dist {
+    {{if eq .Env.APPLICATION_ENV "development"}}
+    location /static/vite_dist {
+        include proxy_params;
+        proxy_pass http://vite$request_uri;
+    }
+    {{else}}
+    location /static/vite_dist {
         expires 365d;
     }
-    location /static/webpack_dist {
+    {{end}}
+
+    location /static/icons {
+        expires 365d;
+    }
+    location /static/img {
+        expires 7d;
+    }
+
+    location /favicon.ico {
+        add_header Access-Control-Allow-Origin *;
         expires 365d;
     }
 
     location ~ ^/index\.php(/|$) {
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-
-        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini
-        fastcgi_pass php-fpm-www;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-        fastcgi_param DOCUMENT_ROOT $realpath_root;
         include fastcgi_params;
 
         fastcgi_read_timeout {{ default .Env.NGINX_TIMEOUT "1800" }};
-        fastcgi_buffering off;
 
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+
+        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $realpath_root;
+
+        fastcgi_cache app;
+        fastcgi_cache_use_stale timeout updating;
+
+        {{if eq .Env.APPLICATION_ENV "development"}}
+        add_header X-FastCGI-Cache $upstream_cache_status;
+        {{end}}
+
+        fastcgi_pass php-fpm-www;
         internal;
     }
 
     # Return 404 for all other php files not matching the front controller
     location ~ \.php$ {
         return 404;
-    }
-
-    # pub/sub endpoints
-    location ~ /api/live/nowplaying/([^\/]+)$ {
-        nchan_access_control_allow_origin "*";
-
-        nchan_subscriber;
-
-        nchan_channel_group "azuracast_nowplaying";
-        nchan_channel_id "$1";
-        nchan_channel_id_split_delimiter ",";
-
-        nchan_subscriber_first_message -1;
     }
 
     # deny access to .htaccess files, if Apache's document root
@@ -159,11 +184,19 @@ server {
     # Internal handlers used by the application to perform X-Accel-Redirect's for higher performance.
     location /internal/backups/ {
         internal;
+        add_header Access-Control-Allow-Origin "$upstream_http_access_control_allow_origin";
         alias /var/azuracast/backups/;
+    }
+
+    location /internal/storage/ {
+        internal;
+        add_header Access-Control-Allow-Origin "$upstream_http_access_control_allow_origin";
+        alias /var/azuracast/storage/;
     }
 
     location /internal/stations/ {
         internal;
+        add_header Access-Control-Allow-Origin "$upstream_http_access_control_allow_origin";
         alias /var/azuracast/stations/;
     }
 
